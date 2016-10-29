@@ -1,0 +1,281 @@
+<html>
+  <head>
+    <style>
+      html, body {
+        overflow: hidden;
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        padding: 0;
+      }
+    
+      #renderCanvas {
+        width: 100%;
+        height: 100%;
+        touch-action: none;
+      }
+
+      .defbutton
+      {
+      	border: 2px solid #53adfc4d;
+		background: #c4e3ff66;
+		color: white;
+		font-weight: bold;
+		box-shadow: inset 0px 0px 6px 2px #53adfc4d;
+		text-shadow: 0px 0px 3px black;
+		width: 100%;
+      }
+
+      .defbutton:hover
+      {
+      	border: 2px solid #53adfc4d;
+		background: #53adfc99;
+		color: white;
+		font-weight: bold;
+		box-shadow: inset 0px 0px 6px 2px #53adfc4d;
+		text-shadow: 0px 0px 3px black;
+		width: 100%;
+      }
+
+    </style>
+  </head>
+  <body>        
+      <script src="http://cdnjs.cloudflare.com/ajax/libs/three.js/r69/three.js"></script>
+      <script src="orbit.js"></script>
+      <script>
+        var Models = [];
+        var Orbits = [];
+        var lastUpdate = Date.now();
+        var scale = 10000; 
+        var timeScale = 50;
+        var objScale = 10000;
+        var au = 149597871.0;
+        var eStep = 0.5;
+        var scene = new THREE.Scene();
+        var camera = new THREE.PerspectiveCamera( 90, window.innerWidth / window.innerHeight, 0.1, 10000000);
+        var renderer = new THREE.WebGLRenderer();
+        renderer.setSize( window.innerWidth, window.innerHeight );
+        renderer.shadowMapEnabled = true;
+        renderer.shadowMapType = THREE.PCFSoftShadowMap;
+        
+        document.body.appendChild( renderer.domElement );
+
+        function elipsaIncl(a, b, perihelion, barva, incl)
+        {   
+            var n = Math.sqrt((a * a) - (b * b));
+            var m = 0;
+
+            for(var t = 0; t < 10; t+=eStep)
+            {
+              var x = n + a * Math.cos(t);
+              var z = m + b * Math.sin(t);
+              var y = x * Math.tan(incl);
+              var geometry = new THREE.Geometry();
+              geometry.vertices.push(new THREE.Vector3(x, y, z));
+              x = n + a * Math.cos(t + 0.05);
+              z = m + b * Math.sin(t + 0.05);
+              y = x * Math.tan(incl);
+              geometry.vertices.push(new THREE.Vector3(x, y, z));
+              material = new THREE.LineBasicMaterial( { color: barva } );
+              var line = new THREE.Line(geometry, material);
+              scene.add(line);
+            }
+        
+        }
+        
+        function asteroidBelt(a, b, barva, diameter, count)
+        {
+            a = a * 149597871.0 / scale;
+            b = b * 149597871.0 / scale;
+            diameter = diameter * 149597871.0 / scale;
+            var particles = new THREE.Geometry();
+            var particle;
+            var incl = 0.1;
+            var x, y, z;
+            var d_param = diameter / 2;
+            var p2 = 0.5 * count;
+            var tmp;
+            for(var i = 0; i < count; i++)
+            {
+              tmp = (i / p2) * (2 * Math.PI); 
+              x = a * Math.cos(tmp) + (Math.random() * diameter - d_param);
+              z = b * Math.sin(tmp) + (Math.random() * diameter - d_param);
+              if(i % 10 == 0) y = (Math.random() * 8) - (Math.random() * 8); 
+              else if(i % 100 == 0) y = (Math.random() * 20) - (Math.random() * 20); 
+              else y = (Math.random() * 2) - (Math.random() * 2);
+              y+=Math.tan(incl) * x;
+              particle = new THREE.Vector3(x, y, z);
+              particles.vertices.push(particle);  
+            }
+            
+            var material = THREE.ParticleBasicMaterial({color: barva, size: 0.01});
+            var particleSystem = new THREE.PointCloud(particles, material);
+            return particleSystem;
+        }
+                                                                             
+        function largeBody(nazev, r, barva)
+        {
+          //r = (r / scale);
+          r = 500;
+          var bodyGeom = new THREE.SphereGeometry( r, 32, 32 );
+          var bodyMaterial = new THREE.MeshBasicMaterial( {color: barva} );
+          var body = new THREE.Mesh( bodyGeom, bodyMaterial );
+          body.name = nazev;
+          return body;
+        }
+
+        function planetPosition(dny, per, incl, a, b)
+        { 
+          var n = Math.sqrt((a * a) - (b * b));
+          var m = 0;
+          var pd = 360.0 / per;
+          var rad = -(pd * dny) * Math.PI / 180;
+          var x = n + a * Math.cos(rad);
+          var z = m + b * Math.sin(rad);
+          var y = x * Math.tan(incl);
+
+          x = x * 149597871.0 / scale;
+          y = y * 149597871.0 / scale;
+          z = z * 149597871.0 / scale;
+          return new THREE.Vector3(x, y, z);
+        }
+        
+        
+        function orbit(smaa, smia, incl, period, barva)
+        {
+           this.smaa = smaa; this.smia = smia; this.incl = incl; this.barva = barva; this.period = period;
+        };
+  
+        function orbitAu(smaa, smia, perihelion, incl, period, barva)
+        {
+           elipsaIncl((smaa * au / scale), (smia * au / scale), perihelion,  barva, incl);
+           Orbits[Orbits.length] = new orbit(smaa, smia, incl, period, barva);
+        }
+        
+        function orbitEccAu(smaa, ecc, incl, period, barva, step)
+        {
+           var smia = Math.sqrt((smaa * smaa) - (ecc * ecc));
+           elipsaIncl((smaa * au / scale), (smia * au / scale),  barva, incl);
+           Orbits[Orbits.length] = new orbit(smaa, smia, incl, period, barva);
+        }
+
+        function buildAxis( src, dst, colorHex, dashed ) {
+            var geom = new THREE.Geometry(),
+                mat; 
+    
+            if(dashed) {
+                    mat = new THREE.LineDashedMaterial({ linewidth: 3, color: colorHex, dashSize: 3, gapSize: 3 });
+              } else {
+                    mat = new THREE.LineBasicMaterial({ linewidth: 3, color: colorHex });
+              }
+            geom.vertices.push( src.clone() );
+            geom.vertices.push( dst.clone() );
+            geom.computeLineDistances(); // This one is SUPER important, otherwise dashed lines will appear as simple plain lines
+            var axis = new THREE.Line( geom, mat, THREE.LinePieces );
+            return axis;
+        }
+        
+        function buildAxes( length ) 
+        {
+          var axes = new THREE.Object3D();
+  
+          axes.add( buildAxis( new THREE.Vector3( 0, 0, 0 ), new THREE.Vector3( length, 0, 0 ), 0xFF0000, false ) ); // +X
+          axes.add( buildAxis( new THREE.Vector3( 0, 0, 0 ), new THREE.Vector3( -length, 0, 0 ), 0xFF0000, true) ); // -X
+          axes.add( buildAxis( new THREE.Vector3( 0, 0, 0 ), new THREE.Vector3( 0, length, 0 ), 0x00FF00, false ) ); // +Y
+          axes.add( buildAxis( new THREE.Vector3( 0, 0, 0 ), new THREE.Vector3( 0, -length, 0 ), 0x00FF00, true ) ); // -Y
+          axes.add( buildAxis( new THREE.Vector3( 0, 0, 0 ), new THREE.Vector3( 0, 0, length ), 0x0000FF, false ) ); // +Z
+          axes.add( buildAxis( new THREE.Vector3( 0, 0, 0 ), new THREE.Vector3( 0, 0, -length ), 0x0000FF, true ) ); // -Z
+  
+          return axes;
+        }
+        var smt = buildAxes(50);
+        scene.add(smt);
+
+        camera.position.y = 29713;
+        camera.position.x = 2175;
+        camera.position.z = 28852;
+        camera.scale.z = 1.1;
+
+        var Time = 0;
+        renderer.shadowMapEnabled = true;
+        
+        camera.lookAt(new THREE.Vector3(0, 0, 0));
+        var controls = new THREE.OrbitControls( camera );
+        
+        orbitAu( 0.38709893,  0.37882650, 0.30749951,  0.0589921, 87.969,   0xAEA6A4);
+        orbitAu( 0.72333199,  0.72331540, 0.7184327 , 0.0673697, 224.701,  0xC9A072);
+        orbitAu( 1.00000011,  0.99986048, 0.98328989, 0.1248783, 365.14,   0xFFFFFF);
+        orbitAu( 1.52366231,  1.51700011, 1.38133346, 0.0986111, 686.971,  0xB24F14);
+        orbitAu( 5.20336301,  5.19726669, 4.95155843, 0.1062905, 4332.59,  0x8A7B74);
+        orbitAu( 9.53707032,  9.52307730, 9.020632, 0.0961676, 10759.22, 0xE1CBCE);
+        orbitAu(19.19126393, 19.16990375, 18.286056, 0.1130973, 30687.15, 0xD4FAFB);
+        orbitAu(30.06896348, 30.06785516, 29.810795, 0.1122246, 60190.03, 0x72A9FB);
+        orbitAu(17.8341443, 4.534034, 0.5859781, 2.83266938, 27503.325, 0x72A9FB);
+        
+        //elipsaIncl2(17.8, 4.534034, -0.589, 0, 2.83266938, 0xFFFFFF);
+        
+        Models[0] = largeBody("Slunce",  696342.0, 0xFFFFFF);
+        Models[1] = largeBody("Merkur",    2439.7, 0xAEA6A4);
+        Models[2] = largeBody("Venuše",    6051.8, 0xC9A072);
+        Models[3] = largeBody("Země",      6378.7, 0xFFFFFF);
+        Models[4] = largeBody("Mars",      3389.5, 0xB24F14);
+        Models[5] = largeBody("Jupiter",  69911.0, 0x8A7B74);
+        Models[6] = largeBody("Saturn",   58232.0, 0xE1CBCE);
+        Models[7] = largeBody("Uran",     25362.0, 0xD4FAFB);
+        Models[8] = largeBody("Neptun",   24622.0, 0x72A9FB);
+        Models[9] = largeBody("Halleyova Kometa", 11.0, 0x72A9FB);
+        
+        Models[10] = asteroidBelt(2.5, 2.5, 0x8A7B74, 2.6, 1000);
+        Models[11] = asteroidBelt( 60,  60, 0x8A7B74, 50, 2000);
+       
+               
+      		/*
+      	var light = new THREE.DirectionalLight( 0xffffff, 1 );
+        light.position.set(1000, 1000, 1000);
+        light.castShadow = true;
+        light.shadowCameraVisible = true;
+        scene.add(light);
+        light.target = Models[1];
+        */
+        for(var i = 0; i < Models.length; i++)
+        {
+          scene.add(Models[i]);
+        }
+        
+        function render() 
+        {
+          var now = (Date.now() / 86400000) + ((scale - 1) * Time/86400);
+          
+          for(var i = 1; i < Models.length; i++)
+          {
+            try
+            {
+              var pozice = planetPosition(now, Orbits[i - 1].period, Orbits[i - 1].incl, Orbits[i - 1].smaa, Orbits[i - 1].smia); 
+              Models[i].position.x = pozice.x;
+              Models[i].position.y = pozice.y;
+              Models[i].position.z = pozice.z;
+            }catch (err)
+            {
+            
+            }
+          
+          }
+        	requestAnimationFrame( render );
+        	renderer.render( scene, camera );
+          Time++;
+        }
+        
+        render();
+        
+        function addBody()
+        {
+          var a = document.getElementById("a").value;
+          var b = document.getElementById("b").value;
+          
+        }
+      </script>
+      <div class="controls" style="position:absolute; color:white; right:0px; width:200px; bottom:0px;" onmouseover="controls.enabled = false;" onmouseleave="controls.enabled = true;">
+      		<button class="defbutton">Test</button>
+      </div>
+  </body>
+</html>
