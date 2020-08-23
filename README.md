@@ -1,5 +1,5 @@
 # solar.three
-Three.js interactive rendering of our solar system (simplified).
+Three.js interactive rendering of our solar system (simplified). Available for view at https://0x0c.space .
 
 Originally created in the winter of 2014 or earlier. Uses basic equations for motions on an ellipse.
 
